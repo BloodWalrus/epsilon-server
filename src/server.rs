@@ -1,7 +1,10 @@
 use std::error::Error;
 
 use crate::SENSOR_COUNT;
-use ecore::{connection::Connection, skeleton::Skeleton};
+use ecore::{
+    connection::Connection,
+    skeleton::{JointId, Skeleton},
+};
 use glam::Quat;
 
 pub struct Server {
@@ -18,6 +21,14 @@ impl Server {
     }
 
     pub fn main(mut self) -> Result<(), Box<dyn Error>> {
-        todo!()
+        loop {
+            let tmp = self.streamer.recv()?;
+
+            // map to skeleton
+
+            self.skeleton.evaluate();
+
+            let hips = &self.skeleton[JointId::Hips];
+        }
     }
 }
