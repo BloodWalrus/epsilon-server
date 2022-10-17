@@ -2,7 +2,8 @@
 
 use std::{
     cell::Cell,
-    fmt::Debug,
+    error::Error,
+    fmt::{Debug, Display},
     iter::once,
     ops::{Index, IndexMut},
     rc::Rc,
@@ -20,6 +21,16 @@ const JOINT_COUNT: usize = 8;
 #[derive(Debug)]
 pub enum SkeletonError {
     InvalidStruture,
+}
+
+impl Error for SkeletonError {}
+
+impl Display for SkeletonError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            SkeletonError::InvalidStruture => "the structure of the skeleton is invalid",
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -198,15 +209,17 @@ pub enum JointId {
 #[derive(Debug, Clone)]
 pub struct JointData {
     pub position: Cell<Vec3A>,
+    pub rotation: Cell<Quat>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Joint(Rc<JointData>);
 
 impl Joint {
-    pub fn new(position: Vec3A) -> Self {
+    pub fn new(position: Vec3A, rotation: Quat) -> Self {
         Self(Rc::new(JointData {
             position: Cell::new(position),
+            rotation: Cell::new(rotation),
         }))
     }
 
@@ -217,11 +230,19 @@ impl Joint {
     pub fn set_position(&mut self, position: Vec3A) {
         self.0.position.set(position)
     }
+
+    pub fn get_rotation(&self) -> Quat {
+        self.0.rotation.get()
+    }
+
+    pub fn set_rotation(&mut self, rotation: Quat) {
+        self.0.rotation.set(rotation)
+    }
 }
 
 impl Default for Joint {
     fn default() -> Self {
-        Self::new(Vec3A::ZERO)
+        Self::new(Vec3A::ZERO, Quat::IDENTITY)
     }
 }
 

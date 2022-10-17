@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 ecore = { git = "https://github.com/BloodWalrus/epsilon-core" }
 glam = "0.21.2"
+toml = "0.5.9"
+serde = { version = "1.0.142", features = ["derive"]}
