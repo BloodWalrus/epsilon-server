@@ -2,7 +2,7 @@ use glam::Vec3A;
 
 use crate::skeleton::{Bone, Joint};
 
-const BONE_NO_ROTATION: Vec3A = Vec3A::NEG_Z;
+const BONE_NO_ROTATION: Vec3A = Vec3A::NEG_Y;
 
 pub fn calc_bone_base_from_bone_and_head(head: &Joint, bone: &Bone, base: &mut Joint) {
     base.set_position(

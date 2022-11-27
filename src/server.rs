@@ -46,6 +46,20 @@ impl Server {
         let config: Config = toml::from_slice(&config_data)?;
         let streamer_client = Client::connect(&config.streamer_sockets[..])?;
         let driver_streamer = Streamer::listen(&config.driver_sockets[..])?;
+        let mut skeleton = Skeleton::default();
+
+        skeleton[BoneId::Spine].set_length(0.77);
+        skeleton[BoneId::LeftHipOffset].set_length(0.15);
+        skeleton[BoneId::LeftUpperLeg].set_length(0.48);
+        skeleton[BoneId::LeftLowerLeg].set_length(0.42);
+        skeleton[BoneId::LeftFoot].set_length(0.20);
+        skeleton[BoneId::RightHipOffset].set_length(0.15);
+        skeleton[BoneId::RightUpperLeg].set_length(0.48);
+        skeleton[BoneId::RightLowerLeg].set_length(0.42);
+        skeleton[BoneId::RightFoot].set_length(0.20);
+        skeleton[BoneId::LeftHipOffset].set_rotation(Quat::from_rotation_z(90.0f32.to_radians()));
+        skeleton[BoneId::RightHipOffset].set_rotation(Quat::from_rotation_z(-90.0f32.to_radians()));
+
         Ok(Self {
             streamer_client,
             driver_streamer,
@@ -54,7 +68,7 @@ impl Server {
             } else {
                 None
             },
-            skeleton: Default::default(),
+            skeleton,
         })
     }
 
@@ -65,10 +79,6 @@ impl Server {
                 continue 'driver;
             }
             'streamer: loop {
-                if let Some(ref sockets) = self.streamer_clients {
-                    self.streamer_client = Client::connect(&sockets[..])?;
-                }
-
                 loop {
                     // receive data from streamer
                     let tmp = if let Ok(tmp) = self.streamer_client.recv() {
@@ -86,13 +96,17 @@ impl Server {
                     self.skeleton.evaluate()?;
 
                     // extract joint data from skeleton into data structure that can be sent over the network
-                    let _tmp = JOINTS.map(|joint| {
+                    let mut _tmp = JOINTS.map(|joint| {
                         let joint = &self.skeleton[joint];
                         JointPose {
                             position: joint.get_position().to_array(),
                             rotation: joint.get_rotation().to_array(),
                         }
                     });
+
+                    _tmp[0].rotation = tmp[0].to_array();
+                    _tmp[1].rotation = tmp[3].to_array();
+                    _tmp[2].rotation = tmp[6].to_array();
 
                     // send over network
                     self.driver_streamer.send(_tmp)?;
