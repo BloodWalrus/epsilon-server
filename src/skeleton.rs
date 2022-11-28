@@ -1,5 +1,6 @@
 // this will be a static skeleton for my prototype and i will probably use it for the main nea code as well
 
+use ecore::constants::*;
 use std::{
     cell::Cell,
     error::Error,
@@ -12,9 +13,6 @@ use std::{
 use glam::{Quat, Vec3A};
 
 use crate::{maths::calc_bone_base_from_bone_and_head, tree::BinaryTree};
-
-const BONE_COUNT: usize = 9;
-const JOINT_COUNT: usize = 8;
 
 // Skeleton
 
@@ -302,14 +300,20 @@ impl IndexMut<JointId> for Joints {
 #[repr(usize)]
 pub enum BoneId {
     Spine,
-    LeftHipOffset,
     LeftUpperLeg,
     LeftLowerLeg,
     LeftFoot,
-    RightHipOffset,
     RightUpperLeg,
     RightLowerLeg,
     RightFoot,
+    LeftHipOffset,
+    RightHipOffset,
+}
+
+impl From<usize> for BoneId {
+    fn from(value: usize) -> Self {
+        unsafe { std::mem::transmute::<usize, BoneId>(value) }
+    }
 }
 
 #[derive(Debug, Clone)]

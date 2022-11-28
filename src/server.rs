@@ -1,41 +1,43 @@
 use crate::config::Config;
 use crate::skeleton::*;
 use crate::QUAT_ARRAY_SIZE;
-use crate::SENSOR_COUNT;
 use ecore::connection::{Client, Streamer};
+use ecore::constants::*;
 use ecore::EpsilonResult;
 use glam::Quat;
 use std::mem::size_of;
 use std::net::SocketAddr;
 
-const JOINTS: [JointId; JOINT_COUNT] = [JointId::Hips, JointId::LeftAnkle, JointId::RightAnkle];
-const JOINT_COUNT: usize = 3;
-const JOINTS_SIZE: usize = size_of::<[JointPose; JOINT_COUNT]>();
-
-const BONES: [BoneId; BONE_COUNT] = [
-    BoneId::Spine,
-    BoneId::LeftUpperLeg,
-    BoneId::LeftLowerLeg,
-    BoneId::LeftFoot,
-    BoneId::RightUpperLeg,
-    BoneId::RightLowerLeg,
-    BoneId::RightFoot,
-    BoneId::LeftHipOffset,
-    BoneId::RightHipOffset,
+const TRACKERS: [(JointId, BoneId); TRACKER_COUNT] = [
+    (JointId::Hips, BoneId::Spine),
+    (JointId::LeftAnkle, BoneId::LeftFoot),
+    (JointId::RightAnkle, BoneId::RightFoot),
 ];
-const BONE_COUNT: usize = 9;
-const CONFIG_PATH: &str = "config.toml";
+const TRACKER_COUNT: usize = 3;
+const TRACKER_SIZE: usize = size_of::<[TrackerPose; TRACKER_COUNT]>();
+
+// const BONES: [BoneId; BONE_COUNT] = [
+//     BoneId::Spine,
+//     BoneId::LeftUpperLeg,
+//     BoneId::LeftLowerLeg,
+//     BoneId::LeftFoot,
+//     BoneId::RightUpperLeg,
+//     BoneId::RightLowerLeg,
+//     BoneId::RightFoot,
+//     BoneId::LeftHipOffset,
+//     BoneId::RightHipOffset,
+// ];
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-struct JointPose {
+struct TrackerPose {
     position: [f32; 3],
     rotation: [f32; 4],
 }
 
 pub struct Server {
     streamer_client: Client<[Quat; SENSOR_COUNT], QUAT_ARRAY_SIZE>,
-    driver_streamer: Streamer<[JointPose; JOINT_COUNT], JOINTS_SIZE>,
+    driver_streamer: Streamer<[TrackerPose; TRACKER_COUNT], TRACKER_SIZE>,
     streamer_clients: Option<Vec<SocketAddr>>,
     skeleton: Skeleton,
 }
@@ -89,24 +91,24 @@ impl Server {
 
                     // map bone data to skeleton
                     for i in 0..SENSOR_COUNT {
-                        self.skeleton[BONES[i]].set_rotation(tmp[i]);
+                        self.skeleton[BoneId::from(i)].set_rotation(tmp[i]);
                     }
 
                     // evaluate skeleton
                     self.skeleton.evaluate()?;
 
                     // extract joint data from skeleton into data structure that can be sent over the network
-                    let mut _tmp = JOINTS.map(|joint| {
+                    let mut _tmp = TRACKERS.map(|(joint, bone)| {
                         let joint = &self.skeleton[joint];
-                        JointPose {
+                        TrackerPose {
                             position: joint.get_position().to_array(),
-                            rotation: joint.get_rotation().to_array(),
+                            rotation: tmp[bone as usize].to_array(),
                         }
                     });
 
-                    _tmp[0].rotation = tmp[0].to_array();
-                    _tmp[1].rotation = tmp[3].to_array();
-                    _tmp[2].rotation = tmp[6].to_array();
+                    // _tmp[0].rotation = tmp[BoneId::Spine as usize].to_array();
+                    // _tmp[1].rotation = tmp[BoneId::LeftFoot as usize].to_array();
+                    // _tmp[2].rotation = tmp[BoneId::RightFoot as usize].to_array();
 
                     // send over network
                     self.driver_streamer.send(_tmp)?;
