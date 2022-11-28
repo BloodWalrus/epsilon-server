@@ -1,12 +1,9 @@
 use crate::config::Config;
 use crate::skeleton::*;
-use crate::QUAT_ARRAY_SIZE;
-use ecore::connection::{Client, Streamer};
+use ecore::connection::{CtrlSignal, Listener};
 use ecore::constants::*;
 use ecore::EpsilonResult;
 use glam::Quat;
-use std::mem::size_of;
-use std::net::SocketAddr;
 
 const TRACKERS: [(JointId, BoneId); TRACKER_COUNT] = [
     (JointId::Hips, BoneId::Spine),
@@ -14,7 +11,6 @@ const TRACKERS: [(JointId, BoneId); TRACKER_COUNT] = [
     (JointId::RightAnkle, BoneId::RightFoot),
 ];
 const TRACKER_COUNT: usize = 3;
-const TRACKER_SIZE: usize = size_of::<[TrackerPose; TRACKER_COUNT]>();
 
 // const BONES: [BoneId; BONE_COUNT] = [
 //     BoneId::Spine,
@@ -36,9 +32,8 @@ struct TrackerPose {
 }
 
 pub struct Server {
-    streamer_client: Client<[Quat; SENSOR_COUNT], QUAT_ARRAY_SIZE>,
-    driver_streamer: Streamer<[TrackerPose; TRACKER_COUNT], TRACKER_SIZE>,
-    streamer_clients: Option<Vec<SocketAddr>>,
+    streamer: (Listener<[Quat; SENSOR_COUNT]>, Listener<CtrlSignal>),
+    driver: (Listener<[TrackerPose; TRACKER_COUNT]>, Listener<CtrlSignal>),
     skeleton: Skeleton,
 }
 
@@ -46,8 +41,14 @@ impl Server {
     pub fn new() -> EpsilonResult<Self> {
         let config_data = std::fs::read(CONFIG_PATH)?;
         let config: Config = toml::from_slice(&config_data)?;
-        let streamer_client = Client::connect(&config.streamer_sockets[..])?;
-        let driver_streamer = Streamer::listen(&config.driver_sockets[..])?;
+        let streamer = (
+            Listener::listen(config.streamer_data)?,
+            Listener::listen(config.streamer_ctrl)?,
+        );
+        let driver = (
+            Listener::listen(config.driver_data)?,
+            Listener::listen(config.driver_ctrl)?,
+        );
         let mut skeleton = Skeleton::default();
 
         skeleton[BoneId::Spine].set_length(0.77);
@@ -63,31 +64,26 @@ impl Server {
         skeleton[BoneId::RightHipOffset].set_rotation(Quat::from_rotation_z(-90.0f32.to_radians()));
 
         Ok(Self {
-            streamer_client,
-            driver_streamer,
-            streamer_clients: if config.auto_switch_streamer {
-                Some(config.streamer_sockets)
-            } else {
-                None
-            },
+            streamer,
+            driver,
             skeleton,
         })
     }
 
     pub fn main(mut self) -> EpsilonResult<()> {
-        'driver: loop {
-            if let Err(err) = self.driver_streamer.next_client() {
-                eprintln!("{:?}", err);
-                continue 'driver;
-            }
-            'streamer: loop {
+        for (mut streamer_data, mut streamer_ctrl) in
+            self.streamer.0.incomming().zip(self.streamer.1.incomming())
+        {
+            for (mut driver_data, mut driver_ctrl) in
+                self.driver.0.incomming().zip(self.driver.1.incomming())
+            {
                 loop {
-                    // receive data from streamer
-                    let tmp = if let Ok(tmp) = self.streamer_client.recv() {
-                        tmp
-                    } else {
-                        continue 'streamer;
-                    };
+                    // check for control signals and pass them on if there are any
+                    if let Some(signal) = driver_ctrl.try_recv()? {
+                        streamer_ctrl.send(&signal)?;
+                    }
+
+                    let tmp = streamer_data.recv()?;
 
                     // map bone data to skeleton
                     for i in 0..SENSOR_COUNT {
@@ -106,22 +102,12 @@ impl Server {
                         }
                     });
 
-                    // _tmp[0].rotation = tmp[BoneId::Spine as usize].to_array();
-                    // _tmp[1].rotation = tmp[BoneId::LeftFoot as usize].to_array();
-                    // _tmp[2].rotation = tmp[BoneId::RightFoot as usize].to_array();
-
                     // send over network
-                    self.driver_streamer.send(_tmp)?;
-
-                    if let Err(err) = self.driver_streamer.send(_tmp) {
-                        eprintln!("{:?}", err);
-                        continue 'streamer;
-                    } // note to me
-                      // some multithreading to have it source and sink streams running at different frequencys
-                      // frame culling to reduce some "latency creep" if it occurs in testing
-                      // should not be an issue if they are running localy thou
+                    driver_data.send(&_tmp)?;
                 }
             }
         }
+
+        Ok(())
     }
 }
